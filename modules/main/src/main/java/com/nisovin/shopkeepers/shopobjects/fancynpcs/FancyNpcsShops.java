@@ -14,9 +14,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.HandlerList;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import com.fancyinnovations.fancynpcs.api.FancyNpcsPlugin;
-import com.fancyinnovations.fancynpcs.api.Npc;
-import com.fancyinnovations.fancynpcs.api.NpcData;
+import de.oliver.fancynpcs.api.FancyNpcsPlugin;
+import de.oliver.fancynpcs.api.Npc;
+import de.oliver.fancynpcs.api.NpcData;
 import com.nisovin.shopkeepers.SKShopkeepersPlugin;
 import com.nisovin.shopkeepers.api.internal.util.Unsafe;
 import com.nisovin.shopkeepers.api.shopkeeper.Shopkeeper;
@@ -213,19 +213,27 @@ public class FancyNpcsShops {
 
 		NpcData data = new NpcData(name, creator, location);
 		data.setType(entityType);
+		data.setDisplayName(name);
 		data.setCollidable(false);
 		data.setTurnToPlayer(true);
+		data.setShowInTab(false);
 		data.setSpawnEntity(true);
-		data.setPersistent(true);
 
 		try {
+			// Ensure no NPC with this name already exists before registration
+			Npc existing = FancyNpcsPlugin.get().getNpcManager().getNpc(name);
+			if (existing != null) {
+				existing.removeForAll();
+				FancyNpcsPlugin.get().getNpcManager().removeNpc(existing);
+			}
+
+			// Follow proper FancyNpcs creation sequence for persistent NPCs:
 			Npc npc = FancyNpcsPlugin.get().getNpcAdapter().apply(data);
+			npc.setSaveToFile(true);
+			npc.create();
+			npc.spawnForAll();
 			FancyNpcsPlugin.get().getNpcManager().registerNpc(npc);
 			FancyNpcsPlugin.get().getNpcManager().saveNpcs(false);
-
-			// Show the NPC to all online players:
-			Player[] players = Bukkit.getOnlinePlayers().toArray(new Player[0]);
-			FancyNpcsPlugin.get().getController().refreshNpc(npc, players);
 
 			return npc;
 		} catch (Exception e) {
@@ -242,6 +250,7 @@ public class FancyNpcsShops {
 	public void removeNpc(Npc npc) {
 		if (!this.isEnabled()) return;
 		try {
+			npc.removeForAll();
 			FancyNpcsPlugin.get().getNpcManager().removeNpc(npc);
 			FancyNpcsPlugin.get().getNpcManager().saveNpcs(false);
 		} catch (Exception e) {

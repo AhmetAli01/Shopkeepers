@@ -11,8 +11,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import com.fancyinnovations.fancynpcs.api.FancyNpcsPlugin;
-import com.fancyinnovations.fancynpcs.api.Npc;
+import de.oliver.fancynpcs.api.FancyNpcsPlugin;
+import de.oliver.fancynpcs.api.Npc;
 import com.nisovin.shopkeepers.api.events.ShopkeeperAddedEvent;
 import com.nisovin.shopkeepers.api.internal.util.Unsafe;
 import com.nisovin.shopkeepers.api.shopkeeper.ShopCreationData;
@@ -166,13 +166,9 @@ public class SKFancyNpcShopObject extends AbstractEntityShopObject {
 			creatorUUID = ((PlayerShopkeeper) shopkeeper).getOwnerUUID();
 		}
 
-		// Determine name for the NPC:
-		String name;
-		if (shopkeeper instanceof PlayerShopkeeper) {
-			name = "shopkeeper-" + ((PlayerShopkeeper) shopkeeper).getOwnerName();
-		} else {
-			name = (creatorName != null) ? "shopkeeper-" + creatorName : "shopkeeper-" + shopkeeper.getId();
-		}
+		// Ensure NPC name is unique using a prefix and shopkeeper's unique ID
+		String uniqueId = shopkeeper.getUniqueId().toString().replace("-", "").substring(0, 12);
+		String name = "sk_" + uniqueId;
 
 		Npc npc = fancyNpcsShops.createNpc(spawnLocation, entityType, name, creatorUUID);
 		if (npc == null) {
@@ -186,11 +182,13 @@ public class SKFancyNpcShopObject extends AbstractEntityShopObject {
 
 	private void synchronizeNpc() {
 		Npc npc = this.getNpc();
+		boolean justCreated = false;
 		if (npc == null) {
 			npc = this.createNpcIfNotYetCreated();
 			if (npc == null) {
 				return;
 			}
+			justCreated = true;
 		}
 		assert npc != null;
 
@@ -199,9 +197,11 @@ public class SKFancyNpcShopObject extends AbstractEntityShopObject {
 			this.updateShopkeeperLocation(npc);
 		}
 
-		// Refresh for all online players:
-		Player[] players = Bukkit.getOnlinePlayers().toArray(new Player[0]);
-		FancyNpcsPlugin.get().getController().refreshNpc(npc, players);
+		// If the NPC was just created, createNpc has already called spawnForAll.
+		// If it's an existing NPC, check and update visibility for all online players.
+		if (!justCreated) {
+			npc.checkAndUpdateVisibilityForAll();
+		}
 	}
 
 	// LIFE CYCLE
@@ -285,15 +285,17 @@ public class SKFancyNpcShopObject extends AbstractEntityShopObject {
 
 	@Override
 	public boolean isActive() {
-		Entity entity = this.getEntity();
-		if (entity == null) return false;
-		return !entity.isDead();
+		Npc npc = this.getNpc();
+		if (npc == null) return false;
+		return npc.getData().isSpawnEntity();
 	}
 
 	private @Nullable Location getSpawnLocation() {
 		Location spawnLocation = shopkeeper.getLocation();
 		if (spawnLocation == null) return null;
-		spawnLocation.add(0.5D, 0.5D, 0.5D);
+		// FancyNpcs are packet-based and do not handle gravity like regular entities.
+		// Therefore, we align the NPC to the exact Y level of the block, without adding a 0.5 offset on the Y-axis.
+		spawnLocation.add(0.5D, 0.0D, 0.5D);
 		return spawnLocation;
 	}
 
@@ -314,8 +316,8 @@ public class SKFancyNpcShopObject extends AbstractEntityShopObject {
 		// FancyNpcs manages its own spawning - just refresh all players:
 		npc.getData().setLocation(spawnLocation);
 		npc.getData().setSpawnEntity(true);
-		Player[] players = Bukkit.getOnlinePlayers().toArray(new Player[0]);
-		FancyNpcsPlugin.get().getController().refreshNpc(npc, players);
+		
+		npc.spawnForAll();
 
 		this.onSpawnSucceeded();
 		return true;
@@ -328,8 +330,8 @@ public class SKFancyNpcShopObject extends AbstractEntityShopObject {
 
 		// Hide from all online players:
 		npc.getData().setSpawnEntity(false);
-		Player[] players = Bukkit.getOnlinePlayers().toArray(new Player[0]);
-		FancyNpcsPlugin.get().getController().refreshNpc(npc, players);
+		
+		npc.removeForAll();
 	}
 
 	@Override
@@ -341,8 +343,8 @@ public class SKFancyNpcShopObject extends AbstractEntityShopObject {
 		if (spawnLocation == null) return false;
 
 		npc.getData().setLocation(spawnLocation);
-		Player[] players = Bukkit.getOnlinePlayers().toArray(new Player[0]);
-		FancyNpcsPlugin.get().getController().refreshNpc(npc, players);
+		
+		npc.updateForAll();
 		return true;
 	}
 
@@ -409,12 +411,21 @@ public class SKFancyNpcShopObject extends AbstractEntityShopObject {
 		shopkeeper.setLocation(currentLocation);
 	}
 
-	// SHOP OBJECT NAME (for Citizens NPC name-setting compatibility)
+	// SHOP OBJECT NAME
 
-	protected void setNpcName(Npc npc, String name) {
+	@Override
+	public void setName(@Nullable String name) {
+		Npc npc = this.getNpc();
 		if (npc == null) return;
-		npc.getData().setDisplayName(name);
-		Player[] players = Bukkit.getOnlinePlayers().toArray(new Player[0]);
-		FancyNpcsPlugin.get().getController().refreshNpc(npc, players);
+		npc.getData().setDisplayName(name != null ? name : "");
+		
+		npc.updateForAll();
+	}
+
+	@Override
+	public @Nullable String getName() {
+		Npc npc = this.getNpc();
+		if (npc == null) return null;
+		return npc.getData().getDisplayName();
 	}
 }

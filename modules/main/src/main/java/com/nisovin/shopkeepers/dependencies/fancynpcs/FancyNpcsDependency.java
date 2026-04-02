@@ -13,7 +13,15 @@ public final class FancyNpcsDependency {
 	}
 
 	public static boolean isPluginEnabled() {
-		return Bukkit.getPluginManager().isPluginEnabled(PLUGIN_NAME);
+		if (!Bukkit.getPluginManager().isPluginEnabled(PLUGIN_NAME)) {
+			return false;
+		}
+		try {
+			Class.forName("de.oliver.fancynpcs.api.NpcData");
+			return true;
+		} catch (ClassNotFoundException e) {
+			return false;
+		}
 	}
 
 	private FancyNpcsDependency() {

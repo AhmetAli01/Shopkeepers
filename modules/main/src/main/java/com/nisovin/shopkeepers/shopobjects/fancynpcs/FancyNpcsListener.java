@@ -10,12 +10,13 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import com.fancyinnovations.fancynpcs.api.Npc;
-import com.fancyinnovations.fancynpcs.api.events.NpcDeleteEvent;
-import com.fancyinnovations.fancynpcs.api.events.NpcDespawnEvent;
-import com.fancyinnovations.fancynpcs.api.events.NpcSpawnEvent;
+import de.oliver.fancynpcs.api.Npc;
+import de.oliver.fancynpcs.api.events.NpcInteractEvent;
+import de.oliver.fancynpcs.api.events.NpcRemoveEvent;
+import de.oliver.fancynpcs.api.events.NpcSpawnEvent;
 import com.nisovin.shopkeepers.api.ShopkeepersPlugin;
 import com.nisovin.shopkeepers.api.shopkeeper.Shopkeeper;
+import com.nisovin.shopkeepers.shopkeeper.AbstractShopkeeper;
 import com.nisovin.shopkeepers.util.logging.Log;
 
 /**
@@ -41,7 +42,27 @@ class FancyNpcsListener implements Listener {
 	void onDisable() {
 	}
 
-	// NPC SPAWNING
+	// NPC INTERACTION
+
+	@EventHandler(priority = EventPriority.LOWEST)
+	public void onNpcInteract(NpcInteractEvent event) {
+		Npc npc = event.getNpc();
+		if (npc == null) return;
+
+		Shopkeeper shopkeeper = fancyNpcsShops.getShopkeeper(npc);
+		if (shopkeeper == null) return;
+
+		// Cancel FancyNpcs's own action handling so we can handle the interaction ourselves:
+		event.setCancelled(true);
+
+		Player player = event.getPlayer();
+		if (player == null) return;
+
+		Log.debug(() -> shopkeeper.getLogPrefix() + "FancyNpc NPC has been interacted with by " + player.getName() + ".");
+
+		// Open the shop or editor GUI:
+		((AbstractShopkeeper) shopkeeper).onPlayerInteraction(player);
+	}
 
 	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
 	void onNpcSpawn(NpcSpawnEvent event) {
@@ -63,26 +84,10 @@ class FancyNpcsListener implements Listener {
 		}
 	}
 
-	// NPC DESPAWNING
-
-	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-	void onNpcDespawn(NpcDespawnEvent event) {
-		Npc npc = event.getNpc();
-		if (npc == null) return;
-
-		Shopkeeper shopkeeper = fancyNpcsShops.getShopkeeper(npc);
-		if (shopkeeper == null) return;
-
-		Log.debug(() -> shopkeeper.getLogPrefix() + "FancyNpc NPC is despawned.");
-
-		SKFancyNpcShopObject shopObject = (SKFancyNpcShopObject) shopkeeper.getShopObject();
-		shopObject.setEntity(null);
-	}
-
 	// NPC DELETION
 
 	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-	void onNpcDelete(NpcDeleteEvent event) {
+	public void onNpcRemove(NpcRemoveEvent event) {
 		Npc npc = event.getNpc();
 		if (npc == null) return;
 
